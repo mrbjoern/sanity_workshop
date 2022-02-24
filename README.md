@@ -173,4 +173,104 @@ export default createSchema({
 
 ## Hente data fra Sanity
 
-Sanity har laget sitt eget spørrespråk (groq) som vi bruker for hente og filtrere data fra APIene deres.
+Sanity har laget sitt eget spørrespråk (groq) som vi bruker for hente og filtrere data fra APIene deres. Groq lar oss spesifisere dokumenttypen vi spør etter (`_type == "article"`), og hvilken del av innholdet vi er interessert i. Vi kan også hente referanser fra andre dokuementer, eks navn fra `authors`.
+
+```js
+// pages/articles.tsx
+const query = groq`{
+    "articles": *[_type == "article"]{
+        title,
+        content,
+        "authorNames": authors[]->name
+    }
+}
+`;
+```
+
+I nextjs vil vi gjerne hente inn data fra Sanity gjennom `getStaticProps`, slik at vi slipper å hente data fra Sanity ved hver eneste sidevisning.
+
+```js
+interface StaticProps {
+  props: Props;
+  revalidate: number;
+}
+
+export const getStaticProps = async ({
+  preview = false,
+}): Promise<StaticProps> => {
+  const params = {};
+  const data = await sanityClient.fetch(query, params);
+
+  return {
+    props: { data, params, preview },
+    revalidate: 60,
+  };
+};
+```
+
+Fullstendig eksempel på side som viser artikler fra Sanity:
+
+```js
+import { groq } from "next-sanity";
+import { PortableText } from "@portabletext/react";
+import { usePreviewSubscription } from "../lib/sanity";
+import { sanityClient } from "../lib/sanity.server";
+
+const query = groq`{
+    "articles": *[_type == "article"]{
+        title,
+        content,
+        "authorNames": authors[]->name
+    }
+}
+`;
+
+interface Props {
+  data: {
+    articles: { title: string, content: any, authorNames: string[] }[],
+  };
+  params: {};
+  preview: boolean;
+}
+
+const Articles = (props: Props) => {
+  const { data } = usePreviewSubscription(query, {
+    initialData: props.data,
+    params: props.params,
+    enabled: props.preview,
+  });
+
+  return (
+    <div>
+      {data.articles.map((article) => {
+        return (
+          <article key={article.title}>
+            <h1>{article.title}</h1>
+            Skrevet av: {article.authorNames.join(", ")}
+            <PortableText value={article.content} />
+          </article>
+        );
+      })}
+    </div>
+  );
+};
+
+interface StaticProps {
+  props: Props;
+  revalidate: number;
+}
+
+export const getStaticProps = async ({
+  preview = false,
+}): Promise<StaticProps> => {
+  const params = {};
+  const data = await sanityClient.fetch(query, params);
+
+  return {
+    props: { data, params, preview },
+    revalidate: 60,
+  };
+};
+
+export default Articles;
+```

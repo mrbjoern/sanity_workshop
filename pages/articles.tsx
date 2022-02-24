@@ -29,7 +29,7 @@ const Articles = (props: Props) => {
 
   return (
     <div>
-      {props.data.articles.map((article) => {
+      {data.articles.map((article) => {
         return (
           <article key={article.title}>
             <h1>{article.title}</h1>
