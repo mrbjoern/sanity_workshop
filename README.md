@@ -1,34 +1,172 @@
-This is a [Next.js](https://nextjs.org/) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# Sanity workshop
 
-## Getting Started
+## Sette opp nextjs
 
-First, run the development server:
+`npx create-next-app@latest --typescript`
 
-```bash
-npm run dev
-# or
-yarn dev
+Velge et passende navn på nextjs-appen
+
+`cd navn_på_ny_app`
+
+`npm install --save next-sanity @portabletext/react @sanity/image-url`
+
+## Sette opp Sanity
+
+`mkdir sanity`
+`npx @sanity/cli init`
+
+- Velge "Create new project"
+- Velge et passende prosjektnavn
+- (Y) til default dataset configuration
+- (Enter) på output path
+- Velg "Clean project with no predefined schemas"
+
+`npm install --save @sanity/cli`
+
+Sanity studio kan startes med `npm start`. Studio kjører som default på port 3333.
+
+## Sette opp sanity-client i nextjs-app
+
+Tilbake i nextjs-appen vår lager vi config for å sette opp sanity-client.
+
+```js
+// lib/config.ts
+import { ClientConfig } from "next-sanity";
+
+export const config: ClientConfig = {
+  dataset: process.env.NEXT_PUBLIC_SANITY_DATASET || "production",
+  projectId: process.env.NEXT_PUBLIC_SANITY_PROJECT_ID || "",
+  apiVersion: "2021-10-21",
+  useCdn: process.env.NODE_ENV === "production",
+};
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Env-variabler for dataset og projectId kan vi legge i en egen `.env` på rot. Verdiene finner vi i `./sanity/sanity.json`
 
-You can start editing the page by modifying `pages/index.tsx`. The page auto-updates as you edit the file.
+```js
+// lib/sanity.ts
+import {
+  createPreviewSubscriptionHook,
+  createCurrentUserHook,
+} from "next-sanity";
+import createImageUrlBuilder from "@sanity/image-url";
+import { config } from "./config";
+import { SanityImageSource } from "@sanity/image-url/lib/types/types";
 
-[API routes](https://nextjs.org/docs/api-routes/introduction) can be accessed on [http://localhost:3000/api/hello](http://localhost:3000/api/hello). This endpoint can be edited in `pages/api/hello.ts`.
+/**
+ * Set up a helper function for generating Image URLs with only the asset reference data in your documents.
+ * Read more: https://www.sanity.io/docs/image-url
+ **/
+export const urlFor = (source: SanityImageSource) =>
+  createImageUrlBuilder(config).image(source);
 
-The `pages/api` directory is mapped to `/api/*`. Files in this directory are treated as [API routes](https://nextjs.org/docs/api-routes/introduction) instead of React pages.
+// Set up the live preview subscription hook
+export const usePreviewSubscription = createPreviewSubscriptionHook(config);
 
-## Learn More
+// Helper function for using the current logged in user account
+export const useCurrentUser = createCurrentUserHook(config);
+```
 
-To learn more about Next.js, take a look at the following resources:
+```js
+// lib/sanity.server.ts
+import { createClient } from "next-sanity";
+import { config } from "./config";
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+// Set up the client for fetching data in the getProps page functions
+export const sanityClient = createClient(config);
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js/) - your feedback and contributions are welcome!
+// Set up a preview client with serverless authentication for drafts
+export const previewClient = createClient({
+  ...config,
+  useCdn: false,
+  token: process.env.SANITY_API_TOKEN,
+});
 
-## Deploy on Vercel
+// Helper function for easily switching between normal client and preview client
+export const getClient = (usePreview: boolean) =>
+  usePreview ? previewClient : sanityClient;
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Definere schema for dokumenttypene våre i Sanity
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/deployment) for more details.
+I mappen schemas kan vi definere ulike dokumenttyper i Sanity. Et schema kan eks være en artikkel, forfatter, eller et produkt, og de består gjerne av en eller flere ulike `fields`.
+
+```js
+// schemas/article.js
+export default {
+  name: "article",
+  title: "Artikkel",
+  type: "document",
+  fields: [
+    {
+      name: "title",
+      title: "Tittel",
+      type: "string",
+    },
+    {
+      name: "authors",
+      title: "Forfattere",
+      type: "array",
+      of: [{ type: "reference", to: [{ type: "author" }] }],
+    },
+    {
+      name: "content",
+      title: "Innhold",
+      type: "portableText",
+    },
+  ],
+};
+```
+
+I tillegg skal vi lage et dokument for `author`. En forfatter bør ha et navn og kanskje en biografi / kort beskrivelse.
+
+`portableText` er et spesielt type objekt for fritekst-innhold. Denne kan eks inneholde formatert tekst, inline bilder, lenker, punktlister etc. `portableText` kan rendres med et eget komponent vi importerer fra `@portabletext/react`.
+
+```js
+export default {
+  name: "portableText",
+  title: "Tekstblokk",
+  type: "array",
+  of: [
+    {
+      type: "block",
+      title: "Block",
+      styles: [
+        {
+          title: "Normal",
+          value: "normal",
+        },
+        { title: "H2", value: "h2" },
+      ],
+      lists: [{ title: "Bullet", value: "bullet" }],
+      marks: {
+        decorators: [
+          { title: "Strong", value: "strong" },
+          { title: "Emphasis", value: "em" },
+        ],
+      },
+    },
+    {
+      type: "image",
+      options: { hotspot: true },
+    },
+  ],
+};
+```
+
+Alle schemaene vi har definert må importeres i `schema.js`
+
+```js
+// schema.js
+import createSchema from "part:@sanity/base/schema-creator";
+
+import schemaTypes from "all:part:@sanity/base/schema-type";
+import portableText from "./portableText";
+import author from "./author";
+import article from "./article";
+
+export default createSchema({
+  name: "default",
+  types: schemaTypes.concat([portableText, author, article]),
+});
+```
