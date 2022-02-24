@@ -170,3 +170,7 @@ export default createSchema({
   types: schemaTypes.concat([portableText, author, article]),
 });
 ```
+
+## Hente data fra Sanity
+
+Sanity har laget sitt eget spørrespråk (groq) som vi bruker for hente og filtrere data fra APIene deres.
