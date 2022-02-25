@@ -274,3 +274,9 @@ export const getStaticProps = async ({
 
 export default Articles;
 ```
+
+## Dokumentasjon og sånt
+
+- Getting started, Nextjs (https://nextjs.org/docs/getting-started#automatic-setup)
+- Getting started with Sanity CLI (https://www.sanity.io/docs/getting-started-with-sanity-cli)
+- How queries work - GROQ (https://www.sanity.io/docs/how-queries-work)
